@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--////////////////////////////////////////////////////////////////////////////
+//
+//   Copyright 2010 Daniel Gasienica <daniel@gasienica.ch>
+//
+//   Licensed under the Apache License, Version 2.0 (the "License");
+//   you may not use this file except in compliance with the License.
+//   You may obtain a copy of the License at
+//
+//       http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the License is distributed on an "AS IS" BASIS,
+//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//   See the License for the specific language governing permissions and
+//   limitations under the License.
+//
+/////////////////////////////////////////////////////////////////////////////-->
+<s:Application
+    xmlns:fx="http://ns.adobe.com/mxml/2009"
+    xmlns:s="library://ns.adobe.com/flex/spark"
+    xmlns:mx="library://ns.adobe.com/flex/mx"
+    minWidth="300"
+    minHeight="200"
+    xmlns:openzoom="org.openzoom.flex.components.*"
+    xmlns:controllers="org.openzoom.flash.viewport.controllers.*"
+    xmlns:constraints="org.openzoom.flash.viewport.constraints.*"
+    xmlns:transformers="org.openzoom.flash.viewport.transformers.*"
+    applicationComplete="applicationCompleteHandler(event)"
+    viewSourceURL="source/index.html">
+    <fx:Script>
+        <![CDATA[
+            import com.adobe.viewsource.ViewSource;
+            
+            import it.zoom.api.AsyncRequest;
+            import it.zoom.api.ContentInfo;
+            import it.zoom.api.ZoomItService;
+            import it.zoom.api.events.FaultEvent;
+            import it.zoom.api.events.ResultEvent;
+            
+            import mx.controls.Alert;
+            import mx.events.CalendarLayoutChangeEvent;
+            import mx.events.FlexEvent;
+
+            private static const NOW:Number = new Date().time
+            private static const START:Number = new Date(2010, 7, 10).time // 2010-08-10
+            private static const END:Number = Math.min(NOW, new Date(2010, 7, 16).time) // 2010-08-16
+                
+            private static const TARGET_URL:String = "http://nytimes.com/"
+
+            private var service:ZoomItService
+            private var firstRequest:Boolean = true
+                
+            private var currentDate:Number = NOW
+             
+            private function applicationCompleteHandler(event:FlexEvent):void
+            {
+                service = new ZoomItService()
+                
+                var now:Date = new Date()
+                now.time = currentDate
+                    
+                var startDate:Date = new Date()
+                startDate.time = START
+                    
+                var endDate:Date = new Date()
+                endDate.time = END
+                
+                dateField.selectedDate = now.time < endDate.time ? now : endDate
+                dateField.selectableRange = {rangeStart: startDate, rangeEnd: endDate}
+                
+                setCurrentDate(currentDate)
+            }
+            
+            private function setCurrentDate(date:Number):void
+            {
+                if (date <= START)
+                    date = START                
+                
+                if (date >= END)
+                    date = END
+                
+                currentDate = date
+                loadContentInfo(currentDate)
+            }
+            
+            private function loadContentInfo(targetDate:Number):void
+            {
+                var d:Date = new Date()
+                d.time = targetDate
+                var year:String = d.fullYearUTC.toString()
+                var month:String = ((d.monthUTC + 1) < 10) ?
+                    "0" + (d.monthUTC + 1).toString() : (d.monthUTC + 1).toString() 
+                var date:String = (d.dateUTC < 10) ?
+                    "0" + d.dateUTC.toString() : d.dateUTC.toString()
+                
+                var timestamp:String = "t=" + [year, month, date].join("-")
+                var url:String = TARGET_URL + "?" + timestamp
+
+                if (!firstRequest && !progressBar.visible)
+                {
+                    progressBar.visible = true
+                    progressBar.indeterminate = true
+                }
+
+                var request:AsyncRequest = service.getContentInfoByURL(url)
+                request.addEventListener(ResultEvent.RESULT,
+                    request_resultHandler, false, 0, true)
+                request.addEventListener(FaultEvent.FAULT,
+                    request_faultHandler, false, 0, true)
+            }
+
+            private function request_resultHandler(event:ResultEvent):void
+            {
+                var content:ContentInfo = event.result as ContentInfo
+                
+                if (content && !content.ready && !content.failed && content.progress < 1)
+                {
+                    progressBar.indeterminate = false
+                    progressBar.setProgress(content.progress, 1)
+                    loadContentInfo(currentDate)
+                }
+                
+                if (content.dzi)
+                {
+                    progressBar.visible = false
+                    image.source = content.dzi.url
+                }
+
+                firstRequest = false
+            }
+
+            private function request_faultHandler(event:FaultEvent):void
+            {
+                Alert.show("Something went wrong, sorry.", "Unknown Error")
+            }
+            
+            private function dateField_changeHandler(event:CalendarLayoutChangeEvent):void
+            {
+                var selectedDate:Date = dateField.selectedDate 
+                setCurrentDate(selectedDate.time)
+            }
+        ]]>
+    </fx:Script>
+    <openzoom:MultiScaleImage
+        id="image"
+        top="0"
+        right="0"
+        bottom="0"
+        left="0"
+        >
+        <openzoom:controllers>
+            <controllers:ContextMenuController/>
+            <controllers:MouseController/>
+            <controllers:KeyboardController/>
+        </openzoom:controllers>
+        <openzoom:constraint>
+            <constraints:CompositeConstraint>
+                <constraints:constraints>
+                    <constraints:CenterConstraint/>
+                    <constraints:ZoomConstraint minZoom="1"/>
+                </constraints:constraints>
+            </constraints:CompositeConstraint>
+        </openzoom:constraint>
+        <openzoom:transformer>
+            <transformers:TweenerTransformer/>
+        </openzoom:transformer>
+    </openzoom:MultiScaleImage>
+    
+    <mx:DateField
+        id="dateField"
+        top="22"
+        right="22"
+        change="dateField_changeHandler(event)"/>
+    
+    <mx:ProgressBar
+        id="progressBar"
+        visible="false"
+        horizontalCenter="0"
+        verticalCenter="0"
+        label=""
+        minimum="0"
+        maximum="1"
+        mode="manual"/>
+</s:Application>
